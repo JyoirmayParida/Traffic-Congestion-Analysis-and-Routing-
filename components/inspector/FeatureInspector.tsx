@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Car, Route, Gauge, Zap, Clock, Signal, Sun, CloudRain, ChevronRight, ChevronLeft, RefreshCw } from 'lucide-react';
+import { Car, Route, Gauge, Zap, Clock, Signal, Sun, CloudRain, ChevronRight, ChevronLeft, RefreshCw, X } from 'lucide-react';
 import { collection, query, where, onSnapshot, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { Junction, TrafficSnapshot, CongestionLevel, FeatureVector } from '@/types';
 import { predictCongestionDelayAction } from '@/app/actions/predict';
+import { useAppDispatch } from '../AppStateProvider';
 
 interface Props {
   junction: Junction | null;
@@ -196,8 +197,11 @@ export default function FeatureInspector({ junction, snapshot: initialSnapshot, 
   const displayDelay = isSimulating && predictedDelay !== null ? predictedDelay : liveDelay;
   const displayLevel = isSimulating && predictedLevel !== null ? predictedLevel : liveLevel;
 
+  const [isSimulateExpanded, setIsSimulateExpanded] = useState(false);
+  const dispatch = useAppDispatch();
+
   return (
-    <div className={`fixed right-0 top-0 h-full bg-white shadow-2xl border-l border-slate-200 transition-all duration-300 z-[2000] flex ${isOpen ? 'w-[400px]' : 'w-0'}`}>
+    <div className={`fixed right-0 top-0 h-full bg-white shadow-2xl border-l border-slate-200 transition-all duration-300 z-[2000] flex ${isOpen ? 'w-full md:w-[400px]' : 'w-0'}`}>
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="absolute -left-10 top-1/2 -translate-y-1/2 bg-white p-2 rounded-l-xl shadow-md border-y border-l border-slate-200"
@@ -205,14 +209,22 @@ export default function FeatureInspector({ junction, snapshot: initialSnapshot, 
         {isOpen ? <ChevronRight className="w-5 h-5 text-slate-600" /> : <ChevronLeft className="w-5 h-5 text-slate-600" />}
       </button>
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden w-[400px]">
+      <div className="flex-1 flex flex-col h-full overflow-hidden w-full md:w-[400px]">
         {/* HEADER */}
         <div className="p-6 border-b border-slate-100 shrink-0">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-bold text-slate-900 truncate pr-4">{junction.name}</h2>
-            <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wider rounded border border-indigo-100">
-              Tier 1
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-bold uppercase tracking-wider rounded border border-indigo-100">
+                Tier 1
+              </span>
+              <button 
+                onClick={() => dispatch({ type: 'INSPECT_JUNCTION', id: null })}
+                className="p-1 hover:bg-slate-100 rounded-md text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <p className="text-sm text-slate-500">{junction.id} • {(junction as any).city || 'Delhi'}</p>
         </div>
@@ -330,47 +342,72 @@ export default function FeatureInspector({ junction, snapshot: initialSnapshot, 
           </div>
 
           {/* SIMULATE PANEL */}
-          <div className="pt-6 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Simulation Controls</h3>
-              {isSimulating && (
-                <button 
-                  onClick={handleReset}
-                  className="flex items-center text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors"
-                >
-                  <RefreshCw className="w-3 h-3 mr-1" />
-                  Reset to Live
-                </button>
-              )}
-            </div>
+          <div className="pt-2 border-t border-slate-100">
+            <button 
+              onClick={() => setIsSimulateExpanded(!isSimulateExpanded)}
+              className="w-full flex items-center justify-between py-4 group"
+            >
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider group-hover:text-indigo-600 transition-colors">Simulation Controls</h3>
+              <div className="flex items-center">
+                {isSimulating && (
+                  <span className="mr-3 flex items-center text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 animate-pulse" />
+                    Active
+                  </span>
+                )}
+                <ChevronRight className={`w-5 h-5 text-slate-400 transition-transform duration-300 ${isSimulateExpanded ? 'rotate-90' : ''}`} />
+              </div>
+            </button>
 
-            <div className="space-y-5">
-              <SliderControl label="Vehicle Count" value={vehicle_count} max={MAX_EXPECTED.vehicle_count} onChange={(v) => updateFeature(0, v)} />
-              <SliderControl label="Queue Length (m)" value={queue_length} max={MAX_EXPECTED.queue_length} onChange={(v) => updateFeature(1, v)} />
-              <SliderControl label="Traffic Density" value={traffic_density} max={MAX_EXPECTED.traffic_density} onChange={(v) => updateFeature(2, v)} />
-              <SliderControl label="Average Speed (km/h)" value={avg_speed} max={MAX_EXPECTED.avg_speed} onChange={(v) => updateFeature(3, v)} />
-              <SliderControl label="Waiting Time (s)" value={waiting_time} max={MAX_EXPECTED.waiting_time} onChange={(v) => updateFeature(4, v)} />
-              <SliderControl label="Green Signal Ratio" value={green_signal_ratio} max={MAX_EXPECTED.green_signal_ratio} step={0.1} onChange={(v) => updateFeature(5, v)} />
-              
-              <div className="flex items-center justify-between pt-2">
-                <span className="text-xs font-medium text-slate-700">Peak Hour</span>
-                <button 
-                  onClick={() => updateFeature(7, !peak_hour)}
-                  className={`w-10 h-5 rounded-full relative transition-colors ${peak_hour ? 'bg-indigo-500' : 'bg-slate-300'}`}
+            <AnimatePresence>
+              {isSimulateExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
                 >
-                  <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-transform ${peak_hour ? 'left-6' : 'left-1'}`} />
-                </button>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-700">Monsoon Active</span>
-                <button 
-                  onClick={() => updateFeature(6, !monsoon_active)}
-                  className={`w-10 h-5 rounded-full relative transition-colors ${monsoon_active ? 'bg-indigo-500' : 'bg-slate-300'}`}
-                >
-                  <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-transform ${monsoon_active ? 'left-6' : 'left-1'}`} />
-                </button>
-              </div>
-            </div>
+                  <div className="pb-6 pt-2 space-y-5">
+                    {isSimulating && (
+                      <div className="flex justify-end mb-2">
+                        <button 
+                          onClick={handleReset}
+                          className="flex items-center text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors bg-slate-100 px-3 py-1.5 rounded-lg"
+                        >
+                          <RefreshCw className="w-3 h-3 mr-1.5" />
+                          Reset to Live Data
+                        </button>
+                      </div>
+                    )}
+                    <SliderControl label="Vehicle Count" value={vehicle_count} max={MAX_EXPECTED.vehicle_count} onChange={(v) => updateFeature(0, v)} />
+                    <SliderControl label="Queue Length (m)" value={queue_length} max={MAX_EXPECTED.queue_length} onChange={(v) => updateFeature(1, v)} />
+                    <SliderControl label="Traffic Density" value={traffic_density} max={MAX_EXPECTED.traffic_density} onChange={(v) => updateFeature(2, v)} />
+                    <SliderControl label="Average Speed (km/h)" value={avg_speed} max={MAX_EXPECTED.avg_speed} onChange={(v) => updateFeature(3, v)} />
+                    <SliderControl label="Waiting Time (s)" value={waiting_time} max={MAX_EXPECTED.waiting_time} onChange={(v) => updateFeature(4, v)} />
+                    <SliderControl label="Green Signal Ratio" value={green_signal_ratio} max={MAX_EXPECTED.green_signal_ratio} step={0.1} onChange={(v) => updateFeature(5, v)} />
+                    
+                    <div className="flex items-center justify-between pt-2">
+                      <span className="text-xs font-medium text-slate-700">Peak Hour</span>
+                      <button 
+                        onClick={() => updateFeature(7, !peak_hour)}
+                        className={`w-10 h-5 rounded-full relative transition-colors ${peak_hour ? 'bg-indigo-500' : 'bg-slate-300'}`}
+                      >
+                        <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-transform ${peak_hour ? 'left-6' : 'left-1'}`} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-slate-700">Monsoon Active</span>
+                      <button 
+                        onClick={() => updateFeature(6, !monsoon_active)}
+                        className={`w-10 h-5 rounded-full relative transition-colors ${monsoon_active ? 'bg-indigo-500' : 'bg-slate-300'}`}
+                      >
+                        <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-transform ${monsoon_active ? 'left-6' : 'left-1'}`} />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>

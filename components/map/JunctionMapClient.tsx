@@ -77,9 +77,9 @@ export default function JunctionMapClient({ junctions, edges, initialRoute, sour
   }, [junctions, edges, routeResult]);
 
   return (
-    <div className="w-full h-[600px] rounded-xl overflow-hidden shadow-sm border border-slate-200 relative">
+    <div className="w-full h-full relative">
       <MapContainer
-        center={[20.5937, 78.9629]}
+        center={[28.6315, 77.2167]} // Center on Delhi
         zoom={12}
         style={{ height: '100%', width: '100%', zIndex: 0 }}
         zoomControl={false}

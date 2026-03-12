@@ -1,13 +1,12 @@
 import { unstable_cache } from 'next/cache';
-import JunctionMapWrapper from '@/components/map/JunctionMapWrapper';
+import { getRouteAction } from '@/app/actions/getRoute';
+import RoutePanelClient from './RoutePanelClient';
+import type { MapJunction } from '../map/JunctionMapClient';
 import type { Edge } from '@/types';
-import type { MapJunction } from './JunctionMapClient';
 
-// Server-side cache with 60s revalidation
-// Reduces Data Connect reads by ~90%
+// We need junctions to display names in the panel
 const getJunctions = unstable_cache(
   async (city: string): Promise<{ junctions: MapJunction[], edges: Edge[] }> => {
-    // Mock data for scaffolding
     return {
       junctions: [
         { id: 'J-1', name: 'Connaught Place', city: 'Delhi', latitude: 28.6315, longitude: 77.2167, congestion_level: 'SEVERE', current_delay_sec: 320 },
@@ -15,33 +14,34 @@ const getJunctions = unstable_cache(
         { id: 'J-3', name: 'India Gate', city: 'Delhi', latitude: 28.6129, longitude: 77.2295, congestion_level: 'LOW', current_delay_sec: 45 },
         { id: 'J-4', name: 'Red Fort', city: 'Delhi', latitude: 28.6562, longitude: 77.2410, congestion_level: 'MODERATE', current_delay_sec: 120 },
       ],
-      edges: [
-        { id: 'E-1', source_id: 'J-1', destination_id: 'J-2', distance_m: 500, base_time_sec: 120 },
-        { id: 'E-2', source_id: 'J-2', destination_id: 'J-3', distance_m: 2500, base_time_sec: 400 },
-        { id: 'E-3', source_id: 'J-1', destination_id: 'J-4', distance_m: 3000, base_time_sec: 500 },
-        { id: 'E-4', source_id: 'J-2', destination_id: 'J-4', distance_m: 2800, base_time_sec: 450 },
-      ]
+      edges: []
     };
   },
   ['junctions-cache'],
   { revalidate: 60 }
 );
 
-export default async function JunctionMapServer({ searchParamsPromise }: { searchParamsPromise: Promise<{ [key: string]: string | string[] | undefined }> }) {
+export default async function RoutePanelServer({ searchParamsPromise }: { searchParamsPromise: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const searchParams = await searchParamsPromise;
   const city = (searchParams.city as string) || 'Delhi';
   const sourceId = searchParams.source as string | undefined;
   const destId = searchParams.dest as string | undefined;
 
-  const data = await getJunctions(city);
+  const { junctions } = await getJunctions(city);
+
+  let routeResult = null;
+  if (sourceId && destId) {
+    routeResult = await getRouteAction(null, {
+      source_junction_id: sourceId,
+      destination_junction_id: destId,
+      departure_time: new Date().toISOString()
+    });
+  }
 
   return (
-    <JunctionMapWrapper 
-      junctions={data.junctions} 
-      edges={data.edges} 
-      sourceId={sourceId || null}
-      destId={destId || null}
-      initialRoute={null} // Route is handled by RoutePanelServer
+    <RoutePanelClient 
+      junctions={junctions} 
+      initialRouteResult={routeResult} 
     />
   );
 }

@@ -5,33 +5,41 @@ import { getRouteAction } from '@/app/actions/getRoute';
 import type { RouteQueryInput, RouteQueryOutput } from '@/types';
 import type { MapJunction } from '../map/JunctionMapClient';
 import { Clock, Navigation, Activity, BarChart2 } from 'lucide-react';
+import { useAppState, useAppDispatch } from '../AppStateProvider';
 
-interface RoutePanelProps {
-  sourceId: string | null;
-  destId: string | null;
-  onReset: () => void;
-  onRouteResult: (result: RouteQueryOutput | null) => void;
+interface RoutePanelClientProps {
   junctions: MapJunction[];
+  initialRouteResult: RouteQueryOutput | null;
 }
 
-export default function RoutePanel({ sourceId, destId, onReset, onRouteResult, junctions }: RoutePanelProps) {
-  const [routeResult, dispatch, isPending] = useActionState(
-    async (state: RouteQueryOutput | null, payload: RouteQueryInput) => {
-      return getRouteAction(state, payload);
+export default function RoutePanelClient({ junctions, initialRouteResult }: RoutePanelClientProps) {
+  const state = useAppState();
+  const dispatchApp = useAppDispatch();
+  
+  const [routeResult, dispatchAction, isPending] = useActionState(
+    async (prevState: RouteQueryOutput | null, payload: RouteQueryInput) => {
+      return getRouteAction(prevState, payload);
     },
-    null
+    initialRouteResult
   );
 
   useEffect(() => {
-    onRouteResult(routeResult);
-  }, [routeResult, onRouteResult]);
+    dispatchApp({ type: 'SET_ROUTE_RESULT', result: routeResult });
+  }, [routeResult, dispatchApp]);
+
+  const sourceId = state.sourceId;
+  const destId = state.destId;
 
   const sourceName = sourceId ? junctions.find(j => j.id === sourceId)?.name : 'Select Source';
   const destName = destId ? junctions.find(j => j.id === destId)?.name : 'Select Destination';
 
+  const handleReset = () => {
+    dispatchApp({ type: 'RESET' });
+  };
+
   const handleFindRoute = () => {
     if (sourceId && destId) {
-      dispatch({
+      dispatchAction({
         source_junction_id: sourceId,
         destination_junction_id: destId,
         departure_time: new Date().toISOString()
@@ -45,8 +53,12 @@ export default function RoutePanel({ sourceId, destId, onReset, onRouteResult, j
     return `${m}m ${s}s`;
   };
 
+  // Use the server-provided result if we haven't fetched a new one client-side
+  // Actually, useActionState initializes with initialRouteResult.
+  const currentResult = routeResult;
+
   return (
-    <div className="w-[380px] bg-white border-l border-slate-200 shadow-sm h-full flex flex-col overflow-y-auto">
+    <div className="w-full bg-white h-full flex flex-col overflow-y-auto">
       {/* SECTION 1 — QUERY CONTROLS */}
       <div className="p-6 border-b border-slate-100">
         <h2 className="text-lg font-semibold text-slate-900 mb-4 flex items-center">
@@ -67,7 +79,7 @@ export default function RoutePanel({ sourceId, destId, onReset, onRouteResult, j
 
         <div className="flex gap-3">
           <button
-            onClick={onReset}
+            onClick={handleReset}
             className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
           >
             Reset
@@ -80,7 +92,7 @@ export default function RoutePanel({ sourceId, destId, onReset, onRouteResult, j
             {isPending ? (
               <>
                 <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Computing optimal path...
+                Computing...
               </>
             ) : (
               'Find Route'
@@ -90,7 +102,13 @@ export default function RoutePanel({ sourceId, destId, onReset, onRouteResult, j
       </div>
 
       {/* RESULT SECTIONS */}
-      {routeResult && !isPending && (
+      {!currentResult && !isPending && (
+        <div className="flex-1 flex items-center justify-center p-6 text-center text-slate-500 text-sm">
+          Select a source and destination on the map to find the optimal route.
+        </div>
+      )}
+
+      {currentResult && !isPending && (
         <div className="p-6 space-y-8 flex-1">
           {/* SECTION 2 — OPTIMAL ROUTE RESULT */}
           <section>
@@ -104,24 +122,24 @@ export default function RoutePanel({ sourceId, destId, onReset, onRouteResult, j
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6">
               <div className="flex justify-between items-end mb-2">
                 <div className="text-3xl font-light text-slate-900">
-                  {formatTime(routeResult.optimal_route.total_travel_time_sec)}
+                  {formatTime(currentResult.optimal_route.total_travel_time_sec)}
                 </div>
                 <div className="text-sm text-slate-500 mb-1">
-                  {routeResult.optimal_route.route.length} junctions
+                  {currentResult.optimal_route.route.length} junctions
                 </div>
               </div>
               <div className="text-xs text-slate-500 flex items-center">
                 <Clock className="w-3 h-3 mr-1" />
-                Includes {formatTime(routeResult.optimal_route.delay_sec)} predicted delay
+                Includes {formatTime(currentResult.optimal_route.delay_sec)} predicted delay
               </div>
             </div>
 
             {/* Journey timeline */}
             <div className="relative pl-4 border-l-2 border-slate-200 space-y-6 ml-2">
-              {routeResult.optimal_route.route.map((jId, idx) => {
+              {currentResult.optimal_route.route.map((jId, idx) => {
                 const j = junctions.find(x => x.id === jId);
-                const isLast = idx === routeResult.optimal_route.route.length - 1;
-                const segment = !isLast ? routeResult.optimal_route.segments.find(s => s.from === jId && s.to === routeResult.optimal_route.route[idx+1]) : null;
+                const isLast = idx === currentResult.optimal_route.route.length - 1;
+                const segment = !isLast ? currentResult.optimal_route.segments.find(s => s.from === jId && s.to === currentResult.optimal_route.route[idx+1]) : null;
                 
                 return (
                   <div key={jId} className="relative">
@@ -139,7 +157,7 @@ export default function RoutePanel({ sourceId, destId, onReset, onRouteResult, j
                       </div>
                       {idx > 0 && (
                         <div className="text-xs font-mono text-slate-500">
-                          +{formatTime(routeResult.optimal_route.segments[idx-1]?.weight || 0)}
+                          +{formatTime(currentResult.optimal_route.segments[idx-1]?.weight || 0)}
                         </div>
                       )}
                     </div>
@@ -176,12 +194,12 @@ export default function RoutePanel({ sourceId, destId, onReset, onRouteResult, j
           </section>
 
           {/* SECTION 4 — ALTERNATIVES */}
-          {routeResult.alternatives.length > 0 && (
+          {currentResult.alternatives.length > 0 && (
             <section className="pt-6 border-t border-slate-100">
               <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4">Alternative Routes</h3>
               <div className="space-y-3">
-                {routeResult.alternatives.map((alt, idx) => {
-                  const optimalTime = routeResult.optimal_route.total_travel_time_sec;
+                {currentResult.alternatives.map((alt, idx) => {
+                  const optimalTime = currentResult.optimal_route.total_travel_time_sec;
                   const percentSlower = Math.round(((alt.total_travel_time_sec - optimalTime) / optimalTime) * 100);
                   
                   return (
