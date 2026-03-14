@@ -6,28 +6,35 @@ import type { Edge } from '@/types';
 
 // We need junctions to display names in the panel
 const getJunctions = unstable_cache(
-  async (city: string): Promise<{ junctions: MapJunction[], edges: Edge[] }> => {
-    return {
-      junctions: [
-        { id: 'J-1', name: 'Connaught Place', city: 'Delhi', latitude: 28.6315, longitude: 77.2167, congestion_level: 'SEVERE', current_delay_sec: 320 },
-        { id: 'J-2', name: 'Rajiv Chowk', city: 'Delhi', latitude: 28.6328, longitude: 77.2197, congestion_level: 'HIGH', current_delay_sec: 210 },
-        { id: 'J-3', name: 'India Gate', city: 'Delhi', latitude: 28.6129, longitude: 77.2295, congestion_level: 'LOW', current_delay_sec: 45 },
-        { id: 'J-4', name: 'Red Fort', city: 'Delhi', latitude: 28.6562, longitude: 77.2410, congestion_level: 'MODERATE', current_delay_sec: 120 },
-      ],
-      edges: []
-    };
+  async (): Promise<{ junctions: MapJunction[], edges: Edge[] }> => {
+    try {
+      const res = await fetch('http://localhost:8000/junctions/bhubaneswar', {
+        next: { revalidate: 60 }
+      });
+      if (!res.ok) {
+        console.error('Failed to fetch junctions');
+        return { junctions: [], edges: [] };
+      }
+      const data = await res.json();
+      return {
+        junctions: data.junctions || [],
+        edges: data.edges || []
+      };
+    } catch (error) {
+      console.error('Error fetching junctions:', error);
+      return { junctions: [], edges: [] };
+    }
   },
-  ['junctions-cache'],
+  ['junctions-cache-bhubaneswar'],
   { revalidate: 60 }
 );
 
 export default async function RoutePanelServer({ searchParamsPromise }: { searchParamsPromise: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const searchParams = await searchParamsPromise;
-  const city = (searchParams.city as string) || 'Delhi';
   const sourceId = searchParams.source as string | undefined;
   const destId = searchParams.dest as string | undefined;
 
-  const { junctions } = await getJunctions(city);
+  const { junctions } = await getJunctions();
 
   let routeResult = null;
   if (sourceId && destId) {

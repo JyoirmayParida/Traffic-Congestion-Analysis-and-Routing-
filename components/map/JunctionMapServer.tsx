@@ -6,34 +6,35 @@ import type { MapJunction } from './JunctionMapClient';
 // Server-side cache with 60s revalidation
 // Reduces Data Connect reads by ~90%
 const getJunctions = unstable_cache(
-  async (city: string): Promise<{ junctions: MapJunction[], edges: Edge[] }> => {
-    // Mock data for scaffolding
-    return {
-      junctions: [
-        { id: 'J-1', name: 'Connaught Place', city: 'Delhi', latitude: 28.6315, longitude: 77.2167, congestion_level: 'SEVERE', current_delay_sec: 320 },
-        { id: 'J-2', name: 'Rajiv Chowk', city: 'Delhi', latitude: 28.6328, longitude: 77.2197, congestion_level: 'HIGH', current_delay_sec: 210 },
-        { id: 'J-3', name: 'India Gate', city: 'Delhi', latitude: 28.6129, longitude: 77.2295, congestion_level: 'LOW', current_delay_sec: 45 },
-        { id: 'J-4', name: 'Red Fort', city: 'Delhi', latitude: 28.6562, longitude: 77.2410, congestion_level: 'MODERATE', current_delay_sec: 120 },
-      ],
-      edges: [
-        { id: 'E-1', source_id: 'J-1', destination_id: 'J-2', distance_m: 500, base_time_sec: 120 },
-        { id: 'E-2', source_id: 'J-2', destination_id: 'J-3', distance_m: 2500, base_time_sec: 400 },
-        { id: 'E-3', source_id: 'J-1', destination_id: 'J-4', distance_m: 3000, base_time_sec: 500 },
-        { id: 'E-4', source_id: 'J-2', destination_id: 'J-4', distance_m: 2800, base_time_sec: 450 },
-      ]
-    };
+  async (): Promise<{ junctions: MapJunction[], edges: Edge[] }> => {
+    try {
+      const res = await fetch('http://localhost:8000/junctions/bhubaneswar', {
+        next: { revalidate: 60 }
+      });
+      if (!res.ok) {
+        console.error('Failed to fetch junctions');
+        return { junctions: [], edges: [] };
+      }
+      const data = await res.json();
+      return {
+        junctions: data.junctions || [],
+        edges: data.edges || []
+      };
+    } catch (error) {
+      console.error('Error fetching junctions:', error);
+      return { junctions: [], edges: [] };
+    }
   },
-  ['junctions-cache'],
+  ['junctions-cache-bhubaneswar'],
   { revalidate: 60 }
 );
 
 export default async function JunctionMapServer({ searchParamsPromise }: { searchParamsPromise: Promise<{ [key: string]: string | string[] | undefined }> }) {
   const searchParams = await searchParamsPromise;
-  const city = (searchParams.city as string) || 'Delhi';
   const sourceId = searchParams.source as string | undefined;
   const destId = searchParams.dest as string | undefined;
 
-  const data = await getJunctions(city);
+  const data = await getJunctions();
 
   return (
     <JunctionMapWrapper 

@@ -19,16 +19,6 @@ export default function AppHeader() {
       </div>
 
       <div className="flex items-center gap-4">
-        <select
-          value={state.city}
-          onChange={(e) => dispatch({ type: 'SET_CITY', city: e.target.value })}
-          className="bg-slate-50 border border-slate-200 text-slate-900 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block w-full p-2.5 outline-none cursor-pointer"
-        >
-          <option value="Delhi">Delhi</option>
-          <option value="Mumbai">Mumbai</option>
-          <option value="Bengaluru">Bengaluru</option>
-        </select>
-
         <button className="p-2.5 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
           <Moon className="w-5 h-5" />
         </button>

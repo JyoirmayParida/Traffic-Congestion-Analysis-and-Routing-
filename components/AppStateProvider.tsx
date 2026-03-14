@@ -15,7 +15,6 @@ export type AppState = {
 export type AppAction =
   | { type: 'SELECT_SOURCE'; id: string }
   | { type: 'SELECT_DEST';   id: string }
-  | { type: 'SET_CITY';      city: string }
   | { type: 'RESET' }
   | { type: 'TOGGLE_PEAK_MODE' }
   | { type: 'INSPECT_JUNCTION'; id: string | null }
@@ -30,8 +29,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, sourceId: action.id, destId: null, inspectedJunctionId: action.id, routeResult: null };
     case 'SELECT_DEST':
       return { ...state, destId: action.id, inspectedJunctionId: action.id };
-    case 'SET_CITY':
-      return { ...state, city: action.city, sourceId: null, destId: null, inspectedJunctionId: null, routeResult: null };
     case 'RESET':
       return { ...state, sourceId: null, destId: null, inspectedJunctionId: null, routeResult: null };
     case 'TOGGLE_PEAK_MODE':
@@ -53,11 +50,6 @@ function AppStateSync({ state, dispatch }: { state: AppState, dispatch: React.Di
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     let changed = false;
-
-    if (state.city !== (params.get('city') || 'Delhi')) {
-      params.set('city', state.city);
-      changed = true;
-    }
     
     if (state.sourceId) {
       if (params.get('source') !== state.sourceId) {
@@ -82,31 +74,27 @@ function AppStateSync({ state, dispatch }: { state: AppState, dispatch: React.Di
     if (changed) {
       router.push(`/?${params.toString()}`, { scroll: false });
     }
-  }, [state.city, state.sourceId, state.destId, router, searchParams]);
+  }, [state.sourceId, state.destId, router, searchParams]);
 
   // Sync URL to state (for back button)
   useEffect(() => {
-    const city = searchParams.get('city') || 'Delhi';
     const source = searchParams.get('source');
     const dest = searchParams.get('dest');
 
-    if (city !== state.city) {
-      dispatch({ type: 'SET_CITY', city });
-    }
     if (source !== state.sourceId && source) {
       dispatch({ type: 'SELECT_SOURCE', id: source });
     }
     if (dest !== state.destId && dest) {
       dispatch({ type: 'SELECT_DEST', id: dest });
     }
-  }, [searchParams, state.city, state.sourceId, state.destId, dispatch]);
+  }, [searchParams, state.sourceId, state.destId, dispatch]);
 
   return null;
 }
 
 export default function AppStateProvider({ children }: { children: ReactNode }) {
   const initialState: AppState = {
-    city: 'Delhi', // Default for SSR
+    city: 'bhubaneswar', // Hardcode bhubaneswar
     sourceId: null,
     destId: null,
     peakMode: false,

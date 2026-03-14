@@ -226,7 +226,7 @@ export default function FeatureInspector({ junction, snapshot: initialSnapshot, 
               </button>
             </div>
           </div>
-          <p className="text-sm text-slate-500">{junction.id} • {(junction as any).city || 'Delhi'}</p>
+          <p className="text-sm text-slate-500">{junction.id} • {(junction as any).city || 'Bhubaneswar'}</p>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
