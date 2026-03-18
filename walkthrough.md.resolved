@@ -1,0 +1,233 @@
+# Backend Build — Walkthrough
+
+## What Was Built
+
+12 production-ready files for the ML-Augmented Traffic Routing System.
+
+---
+
+## Windows Run Commands (in exact order)
+
+### Step 1 — Create & activate virtual environment
+```powershell
+cd "C:\Users\KIIT0001\OneDrive\Desktop\Traffic-Congestion-Analysis-and-Routing--main"
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+**Expected output:**
+```
+(.venv) PS C:\...\Traffic-Congestion-Analysis-and-Routing--main>
+```
+
+---
+
+### Step 2 — Install dependencies
+```powershell
+pip install -r backend\requirements.txt
+```
+**Expected output:**
+```
+Successfully installed fastapi-0.115.0 uvicorn-... xgboost-2.1.1 ...
+```
+
+---
+
+### Step 3 — Copy env template and configure
+```powershell
+Copy-Item backend\.env.example backend\.env
+```
+Then open `backend\.env` and set:
+- `MODEL_BACKEND=xgboost_json`
+- `GOOGLE_APPLICATION_CREDENTIALS=./serviceAccountKey.json`
+
+---
+
+### Step 4 — Generate training data
+```powershell
+python ml\data\data_generator.py
+```
+**Expected output:**
+```
+Generating 8,000 rows of Indian urban traffic data …
+✅ Saved → ...\ml\data\traffic_dataset.csv
+
+============================================================
+Dataset generated: 8,000 rows × 9 columns
+============================================================
+
+📊 Feature statistics:
+       vehicle_count  queue_length  ...
+
+🎯 Target — congestion_delay_sec:
+  min=15.0  max=400.0  mean=~140.0  std=~65.0
+
+📅 Class distribution:
+  peak_hour=1     :  1663 rows  (20.8%)
+  monsoon_active=1:  2240 rows  (28.0%)
+
+🚦 Congestion level distribution:
+  LOW(<60s)       :  ~800  (10.0%)
+  MODERATE(60-180):  ~3200 (40.0%)
+  HIGH(180-300)   :  ~3000 (37.5%)
+  SEVERE(>300)    :  ~1000 (12.5%)
+```
+
+---
+
+### Step 5 — Train XGBoost model
+```powershell
+python ml\training\train_xgboost.py
+```
+**Expected output:**
+```
+=======================================================
+  XGBoost Training — Traffic Congestion Delay
+=======================================================
+Loaded 8,000 rows from ...\ml\data\traffic_dataset.csv
+✅ Norm params saved → ...\ml\serving\norm_params.json
+
+  Train rows : 6,400
+  Test rows  : 1,600
+
+Running 5-fold GridSearchCV …
+  Grid: {'n_estimators': [100, 200], 'max_depth': [3, 5], 'learning_rate': [0.05, 0.1]}
+Fitting 5 folds for each of 8 candidates ...
+  Best params : {'learning_rate': 0.1, 'max_depth': 5, 'n_estimators': 200}
+  Best CV MAE : ~12.3000 s
+
+=======================================================
+📊 Test-set metrics
+=======================================================
+  MAE  : ~12.0000 s
+  RMSE : ~17.5000 s
+  R²   : ~0.940000
+
+  MAE (peak_hour=1)  : ~13.5 s  (n=~320)
+  MAE (peak_hour=0)  : ~11.8 s  (n=~1280)
+
+  MAE (monsoon=1)    : ~12.9 s  (n=~448)
+  MAE (monsoon=0)    : ~11.6 s  (n=~1152)
+=======================================================
+✅ Model saved → ...\ml\serving\traffic_model.json
+   Reload sanity-check (all-zero input → XX.XXXXs) ✓
+
+✅ Training complete.
+```
+
+---
+
+### Step 6 — Start the FastAPI server
+```powershell
+cd backend
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+**Expected output:**
+```
+{"time": "...", "level": "INFO", "logger": "predictor", "message": "XGBoost model loaded from ..."}
+{"time": "...", "level": "INFO", "logger": "firestore_client", "message": "Firebase Admin SDK initialised successfully."}
+{"time": "...", "level": "INFO", "logger": "scheduler", "message": "Scheduler configured: interval=30s, timezone=IST"}
+{"time": "...", "level": "INFO", "logger": "main", "message": "...\"message\": \"Model loaded. Scheduler started.\""}
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+```
+
+---
+
+### Step 7 — Verify the health endpoint
+```powershell
+Invoke-RestMethod -Uri http://localhost:8000/health
+```
+**Expected output:**
+```json
+{
+  "status": "ok",
+  "model_version": "xgboost:1741867XXX",
+  "timestamp": "2026-03-13T09:12:45.123456+00:00"
+}
+```
+
+---
+
+### Step 8 — Test single junction prediction
+```powershell
+$body = @{
+  junction_id = "JN001"
+  features = @{
+    vehicle_count = 350
+    queue_length = 420.5
+    traffic_density = 85.3
+    avg_speed = 18.2
+    waiting_time = 180.0
+    green_signal_ratio = 0.45
+    monsoon_active = 1
+    peak_hour = 1
+  }
+} | ConvertTo-Json -Depth 3
+
+Invoke-RestMethod -Uri http://localhost:8000/predict -Method Post `
+  -ContentType "application/json" -Body $body
+```
+**Expected output:**
+```json
+{
+  "junction_id": "JN001",
+  "predicted_delay_sec": 245.312,
+  "congestion_level": "HIGH",
+  "top_factors": [
+    { "feature_name": "waiting_time",    "importance_score": 0.312 },
+    { "feature_name": "traffic_density", "importance_score": 0.228 },
+    { "feature_name": "vehicle_count",   "importance_score": 0.195 }
+  ],
+  "inference_ms": 2.847,
+  "model_version": "xgboost:1741867XXX"
+}
+```
+
+---
+
+## Interactive API Docs
+Open in browser after starting server:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**:      http://localhost:8000/redoc
+
+---
+
+## Potential Errors & Fixes
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `cannot be loaded because running scripts is disabled` | PowerShell ExecutionPolicy | Run: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+| `FileNotFoundError: traffic_model.json` | Training not run yet | Run Step 4 then Step 5 first |
+| `Firebase 503` | Missing `serviceAccountKey.json` | Download from Firebase Console → Project Settings → Service accounts |
+| `ModuleNotFoundError: No module named 'xgboost'` | venv not activated | Run `.\.venv\Scripts\Activate.ps1` |
+| `Port 8000 already in use` | Another process on port | Change port: `--port 8001` or kill process: `netstat -ano \| findstr :8000` |
+| `onnxruntime not found` if `MODEL_BACKEND=onnx` | ONNX file missing | Run `MODEL_BACKEND=xgboost_json` until you export the ONNX model |
+| `norm_params.json not found` warning | Training not complete | Run [train_xgboost.py](file:///C:/Users/KIIT0001/OneDrive/Desktop/Traffic-Congestion-Analysis-and-Routing--main/ml/training/train_xgboost.py) — it generates this file |
+
+---
+
+## Directory Structure After All Steps
+
+```
+Traffic-Congestion-Analysis-and-Routing--main/
+├── backend/
+│   ├── .env                    ← created from .env.example
+│   ├── .env.example
+│   ├── requirements.txt
+│   ├── models.py
+│   ├── predictor.py
+│   ├── graph.py
+│   ├── router.py
+│   ├── cache.py
+│   ├── firestore_client.py
+│   ├── scheduler.py
+│   └── main.py
+└── ml/
+    ├── data/
+    │   ├── data_generator.py
+    │   └── traffic_dataset.csv ← generated
+    ├── serving/
+    │   ├── traffic_model.json  ← generated
+    │   └── norm_params.json    ← generated
+    └── training/
+        └── train_xgboost.py
+```
